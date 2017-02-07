@@ -8,7 +8,7 @@
 #     Author:guchao
 #     mail  :guchaonemo@163.com
 #     time  :2016.10.27 15:00
-#     USAEG :draw data
+#     USAEG :crawl sinaweibo
 #--------------------------------------------------#
 
 import time
