@@ -8,7 +8,7 @@
 #     Author:guchao
 #     mail  :guchaonemo@163.com
 #     time  :2016.10.27 15:00
-#     USAEG :crawl sinaweibo
+#     USAEG :draw data
 #--------------------------------------------------#
 
 import time
@@ -24,6 +24,8 @@ import binascii
 import random
 import MySQLdb
 import warnings
+from WBtext import WBtext
+import random
 import Queue
 warnings.filterwarnings("ignore")
 
@@ -121,13 +123,15 @@ class Weibo(object):
         req = sess.post(url, data=postPara, headers=self.headers)
         login_url = re.search(
             r'replace\([\"\']([^\'\"]+)[\"\']', req.text).group(1)
+        print login_url
         req = sess.get(login_url)
         req = sess.get('http://weibo.com')
         self.uid = re.findall(
             'u/([0-9]*)/', req.url)[0]
-        print self.uid
+        text = req.content
+        self.nickname = re.findall('CONFIG\[\'nick\'\]=\'(.*?)\';', text)[0]
         with open('test.html', 'w') as writehtml:
-            writehtml.writelines(req.content)
+            writehtml.writelines(text)
         self.sess = sess
 
     def getForm(self, u):
@@ -276,7 +280,7 @@ class Weibo(object):
         Img = UploadImg(self.sess)
         # 此处插入uid 和 nick_name
         req = Img.getJpegRequest(
-            imgurl, uid, 'nemo_ini')
+            imgurl, uid, self.nickname)
         html = req.content
         matches = re.search('.*"code":"(.*?)".*"pid":"(.*?)"', html)
         pid = matches.group(2)
@@ -294,6 +298,53 @@ class Weibo(object):
             'Referer'] = "http://weibo.com/u/%s/home?wvr=5" % str(uid)
         req = self.sess.post(
             url=send_url, data=post_data, headers=self.headers)
+        self.headers.pop('Referer')
+
+    def ChangePortrait(self, imgUrl):
+        req = requests.get(imgUrl)
+        Filedata = base64.encodestring(req.content)
+        Filedata = ''.join(Filedata.split('\n'))
+        url = 'http://account.weibo.com/set/aj5/photo/uploadv6?cb=http://weibo.com/aj/static/upimgback.html?_wv=5&callback=STK_ijax_%s' % str(
+            int(time.time() * 1000))
+        post_data = {'Filedata': Filedata, 'ax': 2.5,
+                     'ay': 3.5, 'aw': 140, 'type': 'jepg'}
+        referer = 'http://weibo.com/%s/info' % self.uid
+        self.headers['Referer'] = referer
+        self.sess.post(url=url, data=post_data, headers=self.headers)
+        self.headers.pop('Referer')
+
+    def ChangeInfo(self, userinfo):
+        req = self.sess.get('http://account.weibo.com/set/index')
+        setting_rid = re.findall('setting_rid = \'(.*?)\';', req.content)
+        if setting_rid:
+            setting_rid = setting_rid[0]
+        else:
+            setting_rid = 'kGXEDHfQAE/LNo/l8hhSis1vsq4='
+        referer = 'http://weibo.com/%s/info' % self.uid
+        userinfo['oldnick'] = self.nickname
+        userinfo['sextrend[]'] = 1
+        userinfo['gender'] = 'f'
+        userinfo['blood'] = 'A'
+        userinfo['pub_name'] = 0
+        userinfo['pub_sextrend'] = 1
+        userinfo['pub_love'] = 1
+        userinfo['pub_birthday'] = 3
+        userinfo['pub_blood'] = 1
+        userinfo['pub_blog'] = 2
+        userinfo['love'] = 1
+        userinfo['realname'] = ''
+        userinfo['nickname'] = '我是小媛哦'
+        userinfo['mydesc'] = '一句话怎么能了解我呢，至少得两句话啊'
+        userinfo['province'] = 43
+        userinfo['city'] = 4
+        userinfo['blog'] = ''
+        userinfo['Date_Year'] = '1989'
+        userinfo['birthday_m'] = '03'
+        userinfo['birthday_d'] = '01'
+        userinfo['setting_rid'] = setting_rid
+        self.headers['Referer'] = referer
+        url = 'http://account.weibo.com/set/aj/iframe/editinfo'
+        self.sess.post(url=url, data=userinfo, headers=self.headers)
         self.headers.pop('Referer')
 
     def closebrowser(self):
@@ -357,7 +408,7 @@ class UploadImg(object):
             return self.buildRequest(enurl, data)
 
 if __name__ == '__main__':
-    username = r'khrvpbu06623@163.com'
+    username = r'gcura7575@163.com'
     password = r'tttt5555'
     sina = Weibo(username, password)
     sina.weibologin()
@@ -365,7 +416,33 @@ if __name__ == '__main__':
         'http://weibo.com/u/2850809427')
     sina.unfollow(
         'http://weibo.com/u/2850809427')
+    sina.ChangePortrait(
+        'http://www.qqtouxiang.com/d/file/qinglv/20170222/a17bf4a470c307a97707467bf1551e5f.jpg')
+    sina.ChangeInfo({})
+    print 'http://weibo.com/u/'+str(2850809427)
     #sina.SendImgWeibo('6100220963', u'青云志俩部全集视频，粉我私信')
+    WB = WBtext(sys.argv[1], sys.argv[2])
+    text_img = WB.textcreate()
+    uids = WB.uids
+    random.shuffle(text_img)
+    # sql 语句
+    sql = '''INSERT INTO wb_attention (uid) values (%s);'''
+    insertsql = lambda para, sql: sql % para
+    count_wb = 0
+    for uid in uids:
+        time.sleep(5)
+        sina.cursor.execute(insertsql(str(uid[0]), sql))
+        try:
+            sina.follow('http://weibo.com/u/'+str(uid[0]))
+            time.sleep(35)
+            # if count_wb % 20 == 0:
+            #sina.SendImgWeibo(sina.uid, text_img[count_wb/20][0], text_img[count_wb/20][1])
+            # sina.conn.commit()
+            count_wb += 1
+        except:
+            print insertsql(str(uid[0]), sql) + '插入错误'
+            # print "关注uid为 %s 的用户失败" % (uid)
+    sina.closebrowser()
 '''    pagelists = sina.getFans('1988330463')
     uidQue = Queue.Queue(maxsize=500000)
     for each in pagelists:
